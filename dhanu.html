@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lover's Code — Secret Messages in Morse</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23110810'/><path d='M50 78 C50 78 18 58 18 38 C18 27 26 20 35 20 C41 20 46.5 23.5 50 28 C53.5 23.5 59 20 65 20 C74 20 82 27 82 38 C82 58 50 78 50 78Z' fill='%23c0395e'/></svg>"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --rose:#c0395e; --rose-lt:#e8728f; --rose-dk:#7a1f3d;
+      --bg:#110810; --card:#1e0d17; --border:#3d1a2a;
+      --text:#f2dde4; --muted:#7a4f5c; --gold:#d4a066;
+    }
+    body {
+      font-family:'Cormorant Garamond',Georgia,serif;
+      background:var(--bg); color:var(--text);
+      min-height:100vh; display:flex; flex-direction:column;
+      align-items:center; padding:48px 16px 80px; overflow-x:hidden;
+    }
+
+    /* LOGO */
+    .logo-wrap { display:flex; flex-direction:column; align-items:center; margin-bottom:36px; }
+    .logo-svg { width:110px; height:110px; }
+    .logo-ring { animation:ringPulse 3s ease-in-out infinite; transform-origin:55px 55px; }
+    @keyframes ringPulse { 0%,100%{opacity:.15} 50%{opacity:.35} }
+    .logo-heart-g { transform-origin:55px 53px; animation:heartBeat 1.4s ease-in-out infinite; }
+    .logo-heart-g:focus { outline:none; }
+    #logo-heart { outline:none; }
+    #logo-heart:focus { outline:none; }
+    .logo-svg *:focus { outline:none; }
+    @keyframes heartBeat { 0%,100%{transform:scale(1)} 14%{transform:scale(1.13)} 28%{transform:scale(1)} 42%{transform:scale(1.07)} 56%{transform:scale(1)} }
+    .orbit-dot { transform-origin:55px 55px; animation:orbit 8s linear infinite; }
+    .orbit-dot:nth-child(2){animation-delay:-2.67s}
+    .orbit-dot:nth-child(3){animation-delay:-5.33s}
+    @keyframes orbit { from{transform:rotate(0deg) translateX(40px) rotate(0deg)} to{transform:rotate(360deg) translateX(40px) rotate(-360deg)} }
+    .dash-arc { stroke-dasharray:18 60; animation:spinArc 6s linear infinite; transform-origin:55px 55px; }
+    .dash-arc.rev{animation-direction:reverse;animation-duration:9s}
+    @keyframes spinArc { to{stroke-dashoffset:-78} }
+    .ekg-path { stroke-dasharray:200; stroke-dashoffset:200; animation:drawEkg 2.8s ease-in-out infinite; }
+    @keyframes drawEkg { 0%{stroke-dashoffset:200;opacity:0} 20%{opacity:1} 60%{stroke-dashoffset:0;opacity:1} 80%{stroke-dashoffset:0;opacity:.6} 100%{stroke-dashoffset:-200;opacity:0} }
+    .logo-title { font-family:'Playfair Display',serif; font-size:2rem; font-weight:400; font-style:italic; color:var(--text); letter-spacing:3px; margin-top:-4px; }
+    .logo-title span{color:var(--rose-lt)}
+    .logo-tagline { font-family:'DM Mono',monospace; font-size:.6rem; color:var(--muted); letter-spacing:4px; text-transform:uppercase; margin-top:6px; }
+
+    /* CARD */
+    .card { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:28px; width:100%; max-width:680px; margin-bottom:18px; }
+    .tabs { display:flex; gap:10px; margin-bottom:24px; }
+    .tab { flex:1; padding:10px; border-radius:50px; border:1px solid var(--border); background:transparent; color:var(--muted); font-family:'Cormorant Garamond',serif; font-size:14px; font-style:italic; cursor:pointer; transition:all .2s; }
+    .tab.active{background:var(--rose);border-color:var(--rose);color:#fff}
+    .tab:hover:not(.active){border-color:var(--rose);color:var(--text)}
+    label { display:block; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:2.5px; margin-bottom:10px; }
+    textarea { width:100%; border-radius:12px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:16px; padding:14px 16px; font-family:'Cormorant Garamond',serif; line-height:1.8; resize:vertical; outline:none; transition:border-color .2s; }
+    textarea:focus{border-color:var(--rose)}
+    .output-box { width:100%; border-radius:12px; border:1px solid var(--border); background:var(--bg); padding:14px 16px; min-height:80px; max-height:200px; overflow-y:auto; font-family:'DM Mono',monospace; font-size:13px; color:var(--rose-lt); word-break:break-all; white-space:pre-wrap; line-height:2; margin-top:16px; }
+    .output-box::-webkit-scrollbar { width:6px; }
+    .output-box::-webkit-scrollbar-track { background:transparent; }
+    .output-box::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    .output-box::-webkit-scrollbar-thumb:hover { background:var(--rose); }
+    .decoded-box { border:1px solid var(--border); border-radius:12px; padding:14px 16px; min-height:80px; max-height:200px; overflow-y:auto; font-family:'Cormorant Garamond',serif; font-style:italic; font-size:18px; color:var(--text); background:var(--bg); margin-top:16px; display:block; letter-spacing:1px; word-break:break-word; line-height:1.8; }
+    .decoded-box::-webkit-scrollbar { width:6px; }
+    .decoded-box::-webkit-scrollbar-track { background:transparent; }
+    .decoded-box::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    .decoded-box::-webkit-scrollbar-thumb:hover { background:var(--rose); }
+
+    /* EMOJI PICKER */
+    .emoji-section { margin-top:18px; }
+    .emoji-section-title { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:2px; margin-bottom:8px; }
+    .emoji-tabs { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+    .emoji-cat-btn { padding:4px 12px; border-radius:50px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:11px; font-family:'DM Mono',monospace; cursor:pointer; transition:all .2s; }
+    .emoji-cat-btn.active{background:var(--rose-dk);border-color:var(--rose);color:var(--rose-lt)}
+    .emoji-cat-btn:hover:not(.active){border-color:var(--rose);color:var(--text)}
+    .emoji-grid { display:flex; flex-wrap:wrap; gap:6px; }
+    .emoji-btn { width:38px; height:38px; border-radius:10px; border:1px solid var(--border); background:var(--bg); cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; transition:all .2s; position:relative; }
+    .emoji-btn:hover { border-color:var(--rose); background:#2a0f1a; transform:scale(1.15); }
+    .emoji-btn:hover .emoji-tooltip { display:block; }
+    .emoji-tooltip { display:none; position:absolute; bottom:44px; left:50%; transform:translateX(-50%); background:#2a0f1a; border:1px solid var(--border); border-radius:8px; padding:4px 8px; font-family:'DM Mono',monospace; font-size:9px; color:var(--rose-lt); white-space:nowrap; z-index:10; letter-spacing:1px; }
+
+    /* EMOJI LEGEND in output */
+    .emoji-legend { margin-top:10px; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); line-height:2; }
+    .emoji-legend span { color:var(--rose-lt); }
+
+    .phrases-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .phrase-btn { padding:6px 14px; border-radius:50px; border:1px solid var(--border); background:transparent; color:var(--rose-lt); font-family:'Cormorant Garamond',serif; font-size:13px; font-style:italic; cursor:pointer; transition:all .2s; }
+    .phrase-btn:hover{background:var(--rose);border-color:var(--rose);color:#fff}
+    .btn-row { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    .btn { padding:9px 22px; border-radius:50px; border:1px solid var(--border); background:transparent; color:var(--muted); font-family:'DM Mono',monospace; font-size:11px; letter-spacing:1px; cursor:pointer; transition:all .2s; }
+    .btn:hover{background:#2e1020;color:var(--text);border-color:var(--rose)}
+    .btn.primary{background:var(--rose);border-color:var(--rose);color:#fff}
+    .btn.primary:hover{background:var(--rose-dk)}
+    .error{color:#e07090;font-size:11px;font-family:'DM Mono',monospace;margin-top:6px;min-height:16px}
+    .hint{font-family:'DM Mono',monospace;font-size:10px;color:#4a2535;margin-top:8px;letter-spacing:.5px}
+
+    /* NOTICE BADGE */
+    .emoji-notice { display:inline-flex; align-items:center; gap:6px; background:#2a0f1a; border:1px solid var(--border); border-radius:8px; padding:6px 12px; font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); margin-top:10px; letter-spacing:1px; }
+    .emoji-notice .dot { width:6px; height:6px; border-radius:50%; background:var(--rose); display:inline-block; }
+
+    /* FAVOURITES & HISTORY */
+    .feature-card { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:28px; width:100%; max-width:680px; margin-bottom:18px; }
+    .feature-title { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:2.5px; margin-bottom:14px; }
+    .fav-item, .hist-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); margin-bottom:8px; }
+    .fav-item-text, .hist-item-text { flex:1; font-family:'DM Mono',monospace; font-size:11px; color:var(--rose-lt); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fav-item-label { font-family:'Cormorant Garamond',serif; font-size:13px; font-style:italic; color:var(--text); margin-bottom:2px; }
+    .fav-del, .hist-use { padding:4px 10px; border-radius:50px; border:1px solid var(--border); background:transparent; color:var(--muted); font-family:'DM Mono',monospace; font-size:10px; cursor:pointer; transition:all .2s; }
+    .fav-del:hover { border-color:#e07090; color:#e07090; }
+    .hist-use:hover { border-color:var(--rose); color:var(--text); }
+    .empty-msg { font-family:'DM Mono',monospace; font-size:10px; color:#3a1a25; text-align:center; padding:16px; }
+
+    /* PASSWORD MODAL */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100; align-items:center; justify-content:center; }
+    .modal-overlay.show { display:flex; }
+    .modal { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:28px; width:90%; max-width:380px; }
+    .modal-title { font-family:'Playfair Display',serif; font-style:italic; font-size:1.3rem; color:var(--text); margin-bottom:6px; }
+    .modal-sub { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:1px; margin-bottom:18px; }
+    .modal input { width:100%; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:16px; padding:12px 14px; font-family:'DM Mono',monospace; outline:none; transition:border-color .2s; margin-bottom:12px; letter-spacing:3px; }
+    .modal input:focus { border-color:var(--rose); }
+    .modal-btns { display:flex; gap:10px; }
+    .modal-error { font-family:'DM Mono',monospace; font-size:10px; color:#e07090; min-height:16px; margin-bottom:8px; }
+
+    /* INSTAGRAM BTN */
+    .btn.instagram { background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); border-color:#dc2743; color:#fff; }
+    .btn.instagram:hover { opacity:0.85; }
+
+    /* DARK / LIGHT MODE */
+    body.light-mode {
+      --bg:#fdf0f3; --card:#fff0f4; --border:#f0c0cc;
+      --text:#3a1020; --muted:#a06070; --gold:#b07040;
+    }
+    body.light-mode textarea, body.light-mode .output-box, body.light-mode .decoded-box,
+    body.light-mode .fav-item, body.light-mode .hist-item { background:#fff8fa; }
+    body.light-mode .modal { background:#fff0f4; }
+    .mode-toggle { position:fixed; top:16px; right:16px; z-index:50; width:38px; height:38px; border-radius:50%; border:1px solid var(--border); background:var(--card); color:var(--text); font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .2s; }
+    .mode-toggle:hover { border-color:var(--rose); transform:scale(1.1); }
+
+    /* CONFETTI */
+    .confetti-piece { position:fixed; width:8px; height:8px; border-radius:2px; pointer-events:none; z-index:999; animation:confettiFall linear forwards; }
+    @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0deg);opacity:1} 100%{transform:translateY(100vh) rotate(720deg);opacity:0} }
+
+    /* RANDOM PHRASE */
+    .phrase-random-btn { padding:6px 14px; border-radius:50px; border:1px solid var(--rose); background:transparent; color:var(--rose-lt); font-family:'DM Mono',monospace; font-size:11px; cursor:pointer; transition:all .2s; letter-spacing:1px; }
+    .phrase-random-btn:hover { background:var(--rose); color:#fff; }
+
+    /* REF */
+    details summary { font-family:'DM Mono',monospace; font-size:10px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; cursor:pointer; list-style:none; user-select:none; }
+    details summary::-webkit-details-marker{display:none}
+    details[open] summary{color:var(--rose-lt)}
+    .ref-sub{font-family:'DM Mono',monospace;font-size:10px;color:#4a2535;letter-spacing:2px;text-transform:uppercase;margin:14px 0 8px}
+    .ref-grid{display:flex;flex-wrap:wrap;gap:6px}
+    .ref-pill{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:4px 9px;font-size:11px;display:flex;gap:8px;font-family:'DM Mono',monospace}
+    .ref-pill .ch{color:var(--text);font-weight:400}
+    .ref-pill .mc{color:var(--rose)}
+    footer{margin-top:48px;font-family:'DM Mono',monospace;font-size:10px;color:#3a1a25;letter-spacing:3px;text-align:center}
+  </style>
+</head>
+<body>
+
+  <!-- DARK/LIGHT TOGGLE -->
+  <button class="mode-toggle" onclick="toggleMode()" id="mode-btn" title="Toggle light/dark mode">🌙</button>
+
+  <!-- LOGO -->
+  <div class="logo-wrap">
+    <svg class="logo-svg" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="rg" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#c0395e" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="#c0395e" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="55" cy="55" r="52" fill="url(#rg)"/>
+      <circle class="dash-arc" cx="55" cy="55" r="48" fill="none" stroke="#c0395e" stroke-width="1.2" opacity="0.35"/>
+      <circle class="dash-arc rev" cx="55" cy="55" r="42" fill="none" stroke="#7a1f3d" stroke-width="0.8" stroke-dasharray="6 14" opacity="0.45"/>
+      <circle class="logo-ring" cx="55" cy="55" r="50" fill="none" stroke="#c0395e" stroke-width="0.6" opacity="0.2"/>
+      <g class="orbit-dot"><circle cx="55" cy="55" r="3.5" fill="#c0395e" opacity="0.9"/></g>
+      <g class="orbit-dot"><circle cx="55" cy="55" r="2.5" fill="#e8728f" opacity="0.7"/></g>
+      <g class="orbit-dot"><rect x="51.5" y="53" width="7" height="3.5" rx="1.75" fill="#d4a066" opacity="0.75"/></g>
+      <polyline class="ekg-path" points="8,55 20,55 24,43 28,67 33,37 37,73 41,55 52,55 56,46 60,55 71,55 75,67 79,43 83,67 88,55 102,55" fill="none" stroke="#c0395e" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>
+      <g class="logo-heart-g" id="logo-heart" style="cursor:pointer;" onclick="cycleHeartColor()">
+        <path id="heart-path" d="M55 73 C55 73 29 57 29 41 C29 32 36 26 43 26 C48 26 52.5 29 55 33 C57.5 29 62 26 67 26 C74 26 81 32 81 41 C81 57 55 73 55 73Z" fill="#c0395e"/>
+        <ellipse cx="46" cy="35" rx="5" ry="3.5" fill="#fff" opacity="0.18" transform="rotate(-30 46 35)"/>
+      </g>
+      <circle cx="47" cy="47" r="2.2" fill="#fff" opacity="0.55"/>
+      <circle cx="55" cy="51" r="2.2" fill="#fff" opacity="0.55"/>
+      <circle cx="63" cy="47" r="2.2" fill="#fff" opacity="0.55"/>
+    </svg>
+    <div class="logo-title">Lover's <span>Code</span></div>
+    <div class="logo-tagline">· · · — — — · · ·</div>
+  </div>
+
+  <!-- TRANSLATOR -->
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" id="tab1" onclick="setMode('text')">Write a message</button>
+      <button class="tab" id="tab2" onclick="setMode('morse')">Decode a message</button>
+    </div>
+
+    <!-- TEXT → MORSE -->
+    <div id="panel-text">
+      <label>Your message</label>
+      <textarea id="text-input" rows="3" placeholder="Type or tap an emoji below..." oninput="translateText()"></textarea>
+      <div class="error" id="text-error"></div>
+
+      <!-- EMOJI PICKER -->
+      <div class="emoji-section">
+        <div class="emoji-section-title">Tap an emoji to add it</div>
+        <div class="emoji-tabs">
+          <button class="emoji-cat-btn active" onclick="showCat('love',this)">Love</button>
+          <button class="emoji-cat-btn" onclick="showCat('feelings',this)">Feelings</button>
+          <button class="emoji-cat-btn" onclick="showCat('nature',this)">Nature</button>
+          <button class="emoji-cat-btn" onclick="showCat('fun',this)">Fun</button>
+        </div>
+        <div class="emoji-grid" id="emoji-grid"></div>
+
+      </div>
+
+      <!-- QUICK PHRASES -->
+      <div style="margin-top:18px;">
+        <label>Quick phrases</label>
+        <div class="phrases-grid">
+          <button class="phrase-btn" onclick="setPhrase('I love you')">I love you</button>
+          <button class="phrase-btn" onclick="setPhrase('Be mine')">Be mine</button>
+          <button class="phrase-btn" onclick="setPhrase('Forever yours')">Forever yours</button>
+          <button class="phrase-btn" onclick="setPhrase('Kiss me')">Kiss me</button>
+          <button class="phrase-btn" onclick="setPhrase('My darling')">My darling</button>
+          <button class="phrase-btn" onclick="setPhrase('I miss you')">I miss you</button>
+        </div>
+        <div style="margin-top:10px;">
+          <button class="phrase-random-btn" onclick="randomPhrase()">✨ Random romantic phrase</button>
+        </div>
+      </div>
+
+      <label style="margin-top:20px;">Morse code — send this</label>
+      <div class="output-box" id="morse-output">—</div>
+      <div class="emoji-legend" id="emoji-legend"></div>
+
+      <div class="btn-row">
+        <button class="btn primary" onclick="copyText('morse-output')">Copy code</button>
+        <button class="btn" onclick="playMorse()">▶ Play</button>
+        <button class="btn" onclick="saveFavourite()">♡ Save</button>
+        <button class="btn instagram" onclick="shareInstagram()">Instagram</button>
+        <button class="btn" onclick="clearPanel()">Clear</button>
+      </div>
+    </div>
+
+    <!-- MORSE → TEXT -->
+    <div id="panel-morse" style="display:none;">
+      <label>Paste morse code received</label>
+      <textarea id="morse-input" rows="3" placeholder="... --- ..." oninput="translateMorse()"></textarea>
+      <p class="hint">space between letters · / between words</p>
+      <div class="error" id="morse-error"></div>
+      <label style="margin-top:20px;">Hidden message</label>
+      <div class="decoded-box" id="text-output">—</div>
+      <div class="btn-row">
+        <button class="btn primary" onclick="copyText('text-output')">Copy message</button>
+        <button class="btn" onclick="openLockModal()">🔒 Lock</button>
+        <button class="btn" onclick="clearMorsePanel()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REFERENCE -->
+  <div class="card">
+    <details>
+      <summary>Morse reference chart</summary>
+      <div class="ref-sub">Letters</div>
+      <div class="ref-grid" id="letter-grid"></div>
+      <div class="ref-sub">Numbers</div>
+      <div class="ref-grid" id="number-grid"></div>
+    </details>
+  </div>
+
+  <footer>made with ❤️ &nbsp;·&nbsp; share with someone special</footer>
+
+  <!-- FAVOURITES CARD -->
+  <div class="feature-card" style="margin-top:0;">
+    <div class="feature-title">♡ Saved Favourites</div>
+    <div id="fav-list"><div class="empty-msg">No favourites yet — save a message above!</div></div>
+  </div>
+
+  <!-- HISTORY CARD -->
+  <div class="feature-card">
+    <div class="feature-title">🕐 Message History</div>
+    <div id="hist-list"><div class="empty-msg">No history yet — translate a message above!</div></div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn" onclick="clearHistory()">Clear history</button>
+    </div>
+  </div>
+
+  <!-- PASSWORD MODAL -->
+  <div class="modal-overlay" id="lock-modal">
+    <div class="modal">
+      <div class="modal-title">🔒 Lock Message</div>
+      <div class="modal-sub" id="lock-modal-sub">Set a password to lock this message</div>
+      <div style="position:relative;">
+        <input type="password" id="lock-password" placeholder="Enter password..." style="padding-right:44px;"/>
+        <button onclick="togglePw('lock-password',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;margin-bottom:12px;">👁</button>
+      </div>
+      <div class="modal-error" id="lock-error"></div>
+      <div class="modal-btns">
+        <button class="btn primary" id="lock-confirm-btn" onclick="confirmLock()">Lock it</button>
+        <button class="btn" onclick="closeLockModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UNLOCK MODAL -->
+  <div class="modal-overlay" id="unlock-modal">
+    <div class="modal">
+      <div class="modal-title">🔓 Unlock Message</div>
+      <div class="modal-sub">Enter the password to reveal the message</div>
+      <div style="position:relative;">
+        <input type="password" id="unlock-password" placeholder="Enter password..." style="padding-right:44px;"/>
+        <button onclick="togglePw('unlock-password',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;margin-bottom:12px;">👁</button>
+      </div>
+      <div class="modal-error" id="unlock-error"></div>
+      <div class="modal-btns">
+        <button class="btn primary" onclick="confirmUnlock()">Unlock</button>
+        <button class="btn" onclick="closeUnlockModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MORSE={A:'.-',B:'-...',C:'-.-.',D:'-..',E:'.',F:'..-.',G:'--.',H:'....',I:'..',J:'.---',K:'-.-',L:'.-..',M:'--',N:'-.',O:'---',P:'.--.',Q:'--.-',R:'.-.',S:'...',T:'-',U:'..-',V:'...-',W:'.--',X:'-..-',Y:'-.--',Z:'--..',0:'-----',1:'.----',2:'..---',3:'...--',4:'....-',5:'.....',6:'-....',7:'--...',8:'---..',9:'----.','.':'.-.-.-',',':'--..--','?':'..--..','!':'-.-.--',"'":'.----.','-':'-....-'};
+    const REV={};Object.entries(MORSE).forEach(([k,v])=>REV[v]=k);
+
+    // Full page themes triggered by heart tap
+    const THEMES = [
+      { name:'rose',    rose:'#c0395e', roseLt:'#e8728f', roseDk:'#7a1f3d', bg:'#110810', card:'#1e0d17', border:'#3d1a2a', text:'#f2dde4', muted:'#7a4f5c', heart:'#c0395e' },
+      { name:'purple',  rose:'#9333ea', roseLt:'#c084fc', roseDk:'#6b21a8', bg:'#0e0a1a', card:'#1a1028', border:'#3b2060', text:'#ede0ff', muted:'#7e5fa0', heart:'#a855f7' },
+      { name:'blue',    rose:'#2563eb', roseLt:'#60a5fa', roseDk:'#1e3a8a', bg:'#080e1a', card:'#0f1828', border:'#1e3a6a', text:'#dbeafe', muted:'#4a6fa0', heart:'#3b82f6' },
+      { name:'green',   rose:'#059669', roseLt:'#34d399', roseDk:'#065f46', bg:'#061210', card:'#0d1f1a', border:'#134e3a', text:'#d1fae5', muted:'#3a7060', heart:'#10b981' },
+      { name:'amber',   rose:'#d97706', roseLt:'#fbbf24', roseDk:'#92400e', bg:'#130e04', card:'#1f1608', border:'#4a300a', text:'#fef3c7', muted:'#7a5a20', heart:'#f59e0b' },
+      { name:'red',     rose:'#dc2626', roseLt:'#f87171', roseDk:'#991b1b', bg:'#130808', card:'#1f0e0e', border:'#4a1a1a', text:'#fee2e2', muted:'#7a3a3a', heart:'#ef4444' },
+      { name:'pink',    rose:'#db2777', roseLt:'#f472b6', roseDk:'#9d174d', bg:'#130810', card:'#1f0d18', border:'#4a1a30', text:'#fce7f3', muted:'#7a3a5a', heart:'#ec4899' },
+      { name:'teal',    rose:'#0891b2', roseLt:'#22d3ee', roseDk:'#164e63', bg:'#050f14', card:'#0a1a20', border:'#0e3a4a', text:'#cffafe', muted:'#2a6070', heart:'#06b6d4' },
+    ];
+    let themeIndex = 0;
+    function cycleHeartColor() {
+      themeIndex = (themeIndex + 1) % THEMES.length;
+      const t = THEMES[themeIndex];
+      const r = document.documentElement.style;
+      r.setProperty('--rose',    t.rose);
+      r.setProperty('--rose-lt', t.roseLt);
+      r.setProperty('--rose-dk', t.roseDk);
+      r.setProperty('--bg',      t.bg);
+      r.setProperty('--card',    t.card);
+      r.setProperty('--border',  t.border);
+      r.setProperty('--text',    t.text);
+      r.setProperty('--muted',   t.muted);
+      document.getElementById('heart-path').setAttribute('fill', t.heart);
+      // Update favicon color to match new theme
+      const faviconSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='${t.bg}'/><path d='M50 78 C50 78 18 58 18 38 C18 27 26 20 35 20 C41 20 46.5 23.5 50 28 C53.5 23.5 59 20 65 20 C74 20 82 27 82 38 C82 58 50 78 50 78Z' fill='${t.heart}'/></svg>`;
+      const favicon = document.querySelector("link[rel='icon']");
+      favicon.href = 'data:image/svg+xml,' + encodeURIComponent(faviconSvg);
+      // Satisfying bounce
+      const heart = document.getElementById('logo-heart');
+      heart.style.transition = 'transform .15s ease';
+      heart.style.transform = 'scale(1.25)';
+      setTimeout(() => { heart.style.transform = 'scale(1)'; }, 150);
+    }
+
+    // Emoji → word mapping
+    const EMOJI_MAP = {
+      '❤️':'HEART','💕':'LOVE','💋':'KISS','💌':'MESSAGE','💑':'TOGETHER',
+      '💍':'RING','🌹':'ROSE','💐':'FLOWERS','🥰':'ADORE','😍':'SMITTEN',
+      '😘':'KISSES','💏':'COUPLE','🫀':'HEARTBEAT','💞':'HEARTS','🌸':'BLOSSOM',
+      '😊':'SMILE','😢':'TEARS','🥹':'TOUCHED','😭':'CRYING','🥺':'PLEASE',
+      '😏':'FLIRT','😇':'ANGEL','🤩':'AMAZED','😌':'CALM','🤗':'HUG',
+      '🌙':'MOON','⭐':'STAR','🌟':'SHINE','🌺':'FLOWER','🦋':'BUTTERFLY',
+      '🌈':'RAINBOW','🌊':'WAVE','🍃':'LEAF','🌷':'TULIP','☀️':'SUN',
+      '🎵':'MUSIC','🎶':'MELODY','✨':'MAGIC','🎁':'GIFT','💫':'SPARKLE',
+      '🍷':'WINE','🕯️':'CANDLE','🧸':'BEAR','🎀':'RIBBON','🫶':'CARE',
+    };
+
+    const EMOJI_CATS = {
+      love:   ['❤️','💕','💋','💌','💑','💍','🌹','💐','🥰','😍','😘','💏','🫀','💞','🌸'],
+      feelings:['😊','😢','🥹','😭','🥺','😏','😇','🤩','😌','🤗','🫶'],
+      nature: ['🌙','⭐','🌟','🌺','🦋','🌈','🌊','🍃','🌷','☀️'],
+      fun:    ['🎵','🎶','✨','🎁','💫','🍷','🕯️','🧸','🎀'],
+    };
+
+    let currentCat = 'love';
+
+    function showCat(cat, btn) {
+      currentCat = cat;
+      document.querySelectorAll('.emoji-cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderEmojiGrid();
+    }
+
+    function renderEmojiGrid() {
+      const grid = document.getElementById('emoji-grid');
+      grid.innerHTML = '';
+      (EMOJI_CATS[currentCat] || []).forEach(em => {
+        const word = EMOJI_MAP[em] || em;
+        const btn = document.createElement('button');
+        btn.className = 'emoji-btn';
+        btn.innerHTML = `${em}<span class="emoji-tooltip">${word}</span>`;
+        btn.onclick = () => insertEmoji(em);
+        grid.appendChild(btn);
+      });
+    }
+
+    function insertEmoji(em) {
+      const ta = document.getElementById('text-input');
+      const pos = ta.selectionStart;
+      const val = ta.value;
+      const newVal = val.slice(0, pos) + em + val.slice(pos);
+      ta.value = newVal;
+      // Use spread to correctly count Unicode code points (emoji can be >1 JS char)
+      const newPos = pos + [...em].reduce((n, c) => n + c.length, 0);
+      ta.selectionStart = ta.selectionEnd = newPos;
+      ta.focus();
+      translateText();
+    }
+
+    function setMode(m) {
+      document.getElementById('tab1').className='tab'+(m==='text'?' active':'');
+      document.getElementById('tab2').className='tab'+(m==='morse'?' active':'');
+      document.getElementById('panel-text').style.display=m==='text'?'':'none';
+      document.getElementById('panel-morse').style.display=m==='morse'?'':'none';
+    }
+
+    function setPhrase(p){document.getElementById('text-input').value=p;translateText();}
+
+    // Split text into segments: regular chars and emojis
+    function tokenize(text) {
+      const tokens = [];
+      const emojiRe = /\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu;
+      let last = 0, m;
+      while ((m = emojiRe.exec(text)) !== null) {
+        if (m.index > last) tokens.push({ type: 'text', val: text.slice(last, m.index) });
+        tokens.push({ type: 'emoji', val: m[0] });
+        last = m.index + m[0].length;
+      }
+      if (last < text.length) tokens.push({ type: 'text', val: text.slice(last) });
+      return tokens;
+    }
+
+    function textToMorse(str) {
+      const out = [], unk = [];
+      str.toUpperCase().split('').forEach(c => {
+        if (c === ' ') out.push('/');
+        else if (MORSE[c]) out.push(MORSE[c]);
+        else unk.push(c);
+      });
+      return { morse: out.join(' '), unknown: unk };
+    }
+
+    function translateText() {
+      const raw = document.getElementById('text-input').value;
+      const errEl = document.getElementById('text-error');
+      const legendEl = document.getElementById('emoji-legend');
+
+      if (!raw.trim()) {
+        document.getElementById('morse-output').textContent = '—';
+        errEl.textContent = ''; legendEl.innerHTML = ''; return;
+      }
+
+      const tokens = tokenize(raw);
+      let morseParts = [], allUnknown = [];
+
+      tokens.forEach(tok => {
+        if (tok.type === 'emoji') {
+          // Emoji stays as emoji in the output directly
+          morseParts.push(tok.val);
+        } else {
+          const { morse, unknown } = textToMorse(tok.val);
+          if (morse) morseParts.push(morse);
+          allUnknown.push(...unknown);
+        }
+      });
+
+      // Merge and clean up slash spacing
+      let final = morseParts.join(' / ')
+        .replace(/\/ \//g, '/').replace(/\s+\/\s+/g, ' / ').trim();
+
+      document.getElementById('morse-output').textContent = final || '—';
+      errEl.textContent = allUnknown.length ? 'Skipped: ' + [...new Set(allUnknown)].join(' ') : '';
+
+      // Hide emoji legend since emoji now appear directly in output
+      legendEl.innerHTML = '';
+    }
+
+    function translateMorse() {
+      const raw = document.getElementById('morse-input').value.trim();
+      const errEl = document.getElementById('morse-error');
+      if (!raw) { document.getElementById('text-output').textContent = '—'; errEl.textContent = ''; return; }
+
+      const emojiRe = /\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu;
+      let out = '', unk = [];
+
+      // Split by word separator ' / '
+      raw.split(' / ').forEach((w, i) => {
+        if (i > 0) out += ' ';
+        // Split word into tokens by space, but keep emoji intact
+        const part = w.trim();
+        // Check if this whole part is an emoji
+        if (emojiRe.test(part)) {
+          emojiRe.lastIndex = 0;
+          out += part; // pass emoji straight through
+          return;
+        }
+        emojiRe.lastIndex = 0;
+        // Otherwise decode morse letter by letter
+        part.split(' ').forEach(c => {
+          if (!c) return;
+          // If token is an emoji, pass through
+          if (emojiRe.test(c)) { emojiRe.lastIndex = 0; out += c; return; }
+          emojiRe.lastIndex = 0;
+          if (REV[c]) out += REV[c];
+          else { out += '?'; unk.push(c); }
+        });
+      });
+
+      document.getElementById('text-output').textContent = out || '—';
+      errEl.textContent = unk.length ? 'Unknown: ' + [...new Set(unk)].join(', ') : '';
+    }
+
+    function copyText(id) {
+      const el = document.getElementById(id);
+      const t = (el.innerText || el.textContent || '').trim();
+      if (!t || t === '—') return;
+
+      const btn = document.querySelector(`[onclick="copyText('${id}')"]`);
+      function flashBtn() {
+        if (!btn) return;
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.style.background = '#2a6e3a';
+        btn.style.borderColor = '#2a6e3a';
+        setTimeout(() => { btn.textContent = orig; btn.style.background = ''; btn.style.borderColor = ''; }, 1500);
+      }
+
+      // Try modern clipboard API first, fall back to execCommand for local files
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(t).then(flashBtn).catch(() => fallbackCopy(t, flashBtn));
+      } else {
+        fallbackCopy(t, flashBtn);
+      }
+    }
+
+    function fallbackCopy(text, onSuccess) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      try { document.execCommand('copy'); onSuccess(); } catch(e) {}
+      document.body.removeChild(ta);
+    }
+
+    function clearPanel() {
+      document.getElementById('text-input').value = '';
+      document.getElementById('morse-output').textContent = '—';
+      document.getElementById('text-error').textContent = '';
+      document.getElementById('emoji-legend').innerHTML = '';
+    }
+
+    function clearMorsePanel() {
+      document.getElementById('morse-input').value = '';
+      document.getElementById('text-output').textContent = '—';
+      document.getElementById('morse-error').textContent = '';
+    }
+
+    let actx = null, nodes = [];
+    function playMorse() {
+      const morse = document.getElementById('morse-output').textContent;
+      if (!morse || morse === '—') return;
+      nodes.forEach(n => { try { n.stop(); } catch(e){} });
+      if (!actx) actx = new AudioContext();
+      const u = 0.09, f = 680;
+      let t = actx.currentTime + 0.05; nodes = [];
+      // Split into words by ' / ', then letters by ' '
+      const words = morse.split(' / ');
+      words.forEach((word, wi) => {
+        if (wi > 0) t += u * 7; // inter-word gap (7 units)
+        const letters = word.trim().split(' ');
+        letters.forEach((letter, li) => {
+          if (li > 0) t += u * 3; // inter-letter gap (3 units)
+          for (const s of letter) {
+            if (s === '.') {
+              const o = actx.createOscillator(), g = actx.createGain();
+              o.frequency.value = f; g.gain.setValueAtTime(0.25, t);
+              o.connect(g); g.connect(actx.destination);
+              o.start(t); o.stop(t + u); nodes.push(o); t += u * 2;
+            } else if (s === '-') {
+              const o = actx.createOscillator(), g = actx.createGain();
+              o.frequency.value = f; g.gain.setValueAtTime(0.25, t);
+              o.connect(g); g.connect(actx.destination);
+              o.start(t); o.stop(t + u * 3); nodes.push(o); t += u * 4;
+            }
+          }
+        });
+      });
+    }
+
+    // Build reference
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(c => {
+      const d = document.createElement('div'); d.className = 'ref-pill';
+      d.innerHTML = `<span class="ch">${c}</span><span class="mc">${MORSE[c]}</span>`;
+      document.getElementById('letter-grid').appendChild(d);
+    });
+    '0123456789'.split('').forEach(c => {
+      const d = document.createElement('div'); d.className = 'ref-pill';
+      d.innerHTML = `<span class="ch">${c}</span><span class="mc">${MORSE[c]}</span>`;
+      document.getElementById('number-grid').appendChild(d);
+    });
+
+    renderEmojiGrid();
+
+    // ─── FAVOURITES ───────────────────────────────────────
+    let favourites = JSON.parse(localStorage.getItem('lc_favs') || '[]');
+
+    function saveFavourite() {
+      const text = document.getElementById('text-input').value.trim();
+      const morse = document.getElementById('morse-output').textContent;
+      if (!text || morse === '—') return;
+      const fav = { id: Date.now(), text, morse };
+      favourites.unshift(fav);
+      if (favourites.length > 20) favourites.pop();
+      localStorage.setItem('lc_favs', JSON.stringify(favourites));
+      renderFavourites();
+      // Flash save button
+      const btn = document.querySelector('[onclick="saveFavourite()"]');
+      if (btn) { const o = btn.textContent; btn.textContent = '♥ Saved!'; btn.style.color='var(--rose)'; setTimeout(()=>{btn.textContent=o;btn.style.color='';},1500); }
+    }
+
+    function deleteFavourite(id) {
+      favourites = favourites.filter(f => f.id !== id);
+      localStorage.setItem('lc_favs', JSON.stringify(favourites));
+      renderFavourites();
+    }
+
+    function loadFavourite(text) {
+      document.getElementById('text-input').value = text;
+      translateText();
+      setMode('text');
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function renderFavourites() {
+      const el = document.getElementById('fav-list');
+      if (!favourites.length) { el.innerHTML = '<div class="empty-msg">No favourites yet — save a message above!</div>'; return; }
+      el.innerHTML = favourites.map(f => `
+        <div class="fav-item">
+          <div style="flex:1;overflow:hidden;">
+            <div class="fav-item-label">${f.text}</div>
+            <div class="fav-item-text">${f.morse}</div>
+          </div>
+          <button class="hist-use" onclick="loadFavourite(${JSON.stringify(f.text)})">Use</button>
+          <button class="fav-del" onclick="deleteFavourite(${f.id})">✕</button>
+        </div>`).join('');
+    }
+
+    // ─── HISTORY ──────────────────────────────────────────
+    let history = JSON.parse(localStorage.getItem('lc_hist') || '[]');
+
+    function addHistory(text, morse) {
+      if (!text || !morse || morse === '—') return;
+      // avoid duplicate consecutive
+      if (history.length && history[0].text === text) return;
+      history.unshift({ text, morse, time: new Date().toLocaleTimeString() });
+      if (history.length > 10) history.pop();
+      localStorage.setItem('lc_hist', JSON.stringify(history));
+      renderHistory();
+    }
+
+    function clearHistory() {
+      history = [];
+      localStorage.setItem('lc_hist', JSON.stringify(history));
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const el = document.getElementById('hist-list');
+      if (!history.length) { el.innerHTML = '<div class="empty-msg">No history yet — translate a message above!</div>'; return; }
+      el.innerHTML = history.map((h, i) => `
+        <div class="hist-item">
+          <div style="flex:1;overflow:hidden;">
+            <div class="fav-item-label">${h.text} <span style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;">${h.time}</span></div>
+            <div class="fav-item-text">${h.morse}</div>
+          </div>
+          <button class="hist-use" onclick="loadFavourite(${JSON.stringify(h.text)})">Use</button>
+        </div>`).join('');
+    }
+
+    // Hook into translateText to record history
+    // Only save to history after user stops typing for 1.5 seconds
+    let historyTimer = null;
+    const _origTranslate = translateText;
+    translateText = function() {
+      _origTranslate();
+      clearTimeout(historyTimer);
+      historyTimer = setTimeout(() => {
+        const text = document.getElementById('text-input').value.trim();
+        const morse = document.getElementById('morse-output').textContent;
+        if (text.length > 1) addHistory(text, morse);
+      }, 1500);
+    };
+
+    // ─── PASSWORD LOCK ────────────────────────────────────
+    function togglePw(inputId, btn) {
+      const input = document.getElementById(inputId);
+      if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+      else { input.type = 'password'; btn.textContent = '👁'; }
+    }
+
+    let lockedMessage = '', lockMode = 'lock';
+
+    function openLockModal() {
+      const msg = document.getElementById('text-output').textContent;
+      if (!msg || msg === '—') return;
+      lockedMessage = msg;
+      lockMode = 'lock';
+      document.getElementById('lock-modal-sub').textContent = 'Set a password to hide this message';
+      document.getElementById('lock-confirm-btn').textContent = 'Lock it';
+      document.getElementById('lock-password').value = '';
+      document.getElementById('lock-error').textContent = '';
+      document.getElementById('lock-modal').classList.add('show');
+    }
+
+    function closeLockModal() {
+      document.getElementById('lock-modal').classList.remove('show');
+    }
+
+    function confirmLock() {
+      const pw = document.getElementById('lock-password').value;
+      if (!pw) { document.getElementById('lock-error').textContent = 'Please enter a password'; return; }
+      // Store hash of password + locked message
+      sessionStorage.setItem('lc_lock_pw', btoa(pw));
+      sessionStorage.setItem('lc_lock_msg', lockedMessage);
+      document.getElementById('text-output').textContent = '🔒 Message locked — tap Unlock to reveal';
+      document.querySelector('[onclick="openLockModal()"]').textContent = '🔓 Unlock';
+      document.querySelector('[onclick="openLockModal()"]').setAttribute('onclick', 'openUnlockModal()');
+      closeLockModal();
+    }
+
+    function openUnlockModal() {
+      document.getElementById('unlock-password').value = '';
+      document.getElementById('unlock-error').textContent = '';
+      document.getElementById('unlock-modal').classList.add('show');
+    }
+
+    function closeUnlockModal() {
+      document.getElementById('unlock-modal').classList.remove('show');
+    }
+
+    function confirmUnlock() {
+      const pw = document.getElementById('unlock-password').value;
+      const stored = sessionStorage.getItem('lc_lock_pw');
+      if (btoa(pw) !== stored) { document.getElementById('unlock-error').textContent = 'Wrong password — try again'; return; }
+      const msg = sessionStorage.getItem('lc_lock_msg');
+      document.getElementById('text-output').textContent = msg;
+      const lockBtn = document.querySelector('[onclick="openUnlockModal()"]');
+      if (lockBtn) { lockBtn.textContent = '🔒 Lock'; lockBtn.setAttribute('onclick', 'openLockModal()'); }
+      closeUnlockModal();
+    }
+
+    // ─── INSTAGRAM SHARE ──────────────────────────────────
+    function shareInstagram() {
+      const morse = document.getElementById('morse-output').textContent;
+      if (!morse || morse === '—') return;
+      const text = morse;
+      fallbackCopy(text, () => {});
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(()=>{});
+      alert('✓ Morse code copied! Paste it in your Instagram DM 💌');
+      window.open('https://www.instagram.com/direct/inbox/', '_blank');
+    }
+
+    // Init render
+    renderFavourites();
+    renderHistory();
+
+    // ─── DARK / LIGHT MODE ────────────────────────────────
+    let isLight = false;
+    function toggleMode() {
+      isLight = !isLight;
+      document.body.classList.toggle('light-mode', isLight);
+      document.getElementById('mode-btn').textContent = isLight ? '🌙' : '☀️';
+    }
+
+    // ─── CONFETTI ─────────────────────────────────────────
+    function launchConfetti() {
+      const colors = ['#c0395e','#e8728f','#d4a066','#a855f7','#f59e0b','#ec4899','#fff'];
+      for (let i = 0; i < 60; i++) {
+        const el = document.createElement('div');
+        el.className = 'confetti-piece';
+        el.style.cssText = `
+          left:${Math.random()*100}vw;
+          top:-10px;
+          background:${colors[Math.floor(Math.random()*colors.length)]};
+          width:${6+Math.random()*8}px;
+          height:${6+Math.random()*8}px;
+          border-radius:${Math.random()>0.5?'50%':'2px'};
+          animation-duration:${1.5+Math.random()*2}s;
+          animation-delay:${Math.random()*0.5}s;
+        `;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3500);
+      }
+    }
+
+    // Hook confetti into copyText
+    const _origCopyText = copyText;
+    copyText = function(id) {
+      _origCopyText(id);
+      const el = document.getElementById(id);
+      const t = (el.innerText || el.textContent || '').trim();
+      if (t && t !== '—') launchConfetti();
+    };
+
+    // ─── RANDOM ROMANTIC PHRASE ───────────────────────────
+    const ROMANTIC_PHRASES = [
+      'You are my sunshine','Every heartbeat is for you','Lost in your eyes',
+      'You make my heart sing','My forever and always','You are my everything',
+      'Loving you is easy','You complete me','My heart belongs to you',
+      'You are my dream come true','Together forever','My love for you is endless',
+      'You are the one','My heart skips for you','You are my happy place',
+      'I choose you every day','You are my reason to smile','My soul loves yours',
+      'You are my whole world','Falling for you always','You are my safe place',
+      'My love grows stronger','You are my greatest gift','Always and forever yours',
+      'You are my first thought','My heart found its home in you',
+    ];
+
+    function randomPhrase() {
+      const phrase = ROMANTIC_PHRASES[Math.floor(Math.random() * ROMANTIC_PHRASES.length)];
+      document.getElementById('text-input').value = phrase;
+      translateText();
+      // Sparkle the button
+      const btn = document.querySelector('[onclick="randomPhrase()"]');
+      if (btn) { btn.textContent = '💫 ' + phrase.slice(0,18) + '...'; setTimeout(()=>{ btn.textContent='✨ Random romantic phrase'; },2000); }
+    }
+
+    // ─── EMOJI CHIME ──────────────────────────────────────
+    function playChime() {
+      try {
+        if (!actx) actx = new AudioContext();
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(880, actx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(1320, actx.currentTime + 0.1);
+        g.gain.setValueAtTime(0.15, actx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.4);
+        o.connect(g); g.connect(actx.destination);
+        o.start(); o.stop(actx.currentTime + 0.4);
+      } catch(e) {}
+    }
+
+    // Hook chime into insertEmoji
+    const _origInsertEmoji = insertEmoji;
+    insertEmoji = function(em) {
+      _origInsertEmoji(em);
+      playChime();
+    };
+
+  </script>
+</body>
+</html>
