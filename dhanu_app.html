@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Chatgram</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#000;font-family:-apple-system,'Helvetica Neue',sans-serif;color:#fff;overflow:hidden;height:100vh}
+::-webkit-scrollbar{width:0}
+input,textarea{font-family:-apple-system,'Helvetica Neue',sans-serif}
+input::placeholder,textarea::placeholder{color:#555}
+@keyframes popIn{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes heartPop{0%{transform:scale(1)}50%{transform:scale(1.6)}100%{transform:scale(1)}}
+.msg-anim{animation:popIn 0.18s ease}
+.fade-in{animation:fadeIn 0.22s ease}
+.slide-up{animation:slideUp 0.25s ease}
+.heart-pop{animation:heartPop 0.3s ease}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const SUPABASE_URL = "https://tmxwfppwabhcqvuccovx.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRteHdmcHB3YWJoY3F2dWNjb3Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NTc5NjQsImV4cCI6MjA5MjMzMzk2NH0.N5tbcGIpR01ebJiB7DHs50DOhN8pqePKJ7ho7nLmtKA";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const hashPw = async(pw) => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw+"cg_salt_2024"));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+};
+
+const AVATARS = ["😊","🌸","🏔️","🍜","🌙","🎨","🦁","🐼","🦊","🐸","🌺","⚡","🔥","💎","🎭","🦋","👑","🌈","🎯","🦄"];
+const COLORS  = ["#60a5fa","#f472b6","#fb923c","#34d399","#a78bfa","#fbbf24","#f87171","#38bdf8","#e879f9","#4ade80"];
+const REACTIONS = ["❤️","😂","😮","😢","😡","👍","🔥","👏"];
+const WALLPAPERS = ["#000000","#0d1117","#1a0a2e","#0a1a2e","#1a1a0a","#2a0a0a"];
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Components ────────────────────────────────────────────────────────────────
+const Spinner = () => <div style={{width:20,height:20,border:"2px solid #333",borderTop:"2px solid #fff",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>;
+
+const Avatar = ({ user, size=40, ring=false, online=false }) => (
+  <div style={{position:"relative",flexShrink:0}}>
+    {ring && <div style={{position:"absolute",inset:-2,borderRadius:"50%",background:"linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)",zIndex:0}}/>}
+    <div style={{width:size,height:size,borderRadius:"50%",background:`linear-gradient(135deg,${user?.color||"#60a5fa"}44,${user?.color||"#60a5fa"})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.42,position:"relative",zIndex:1,border:ring?"2px solid #000":"none"}}>{user?.avatar||"😊"}</div>
+    {online && <div style={{position:"absolute",bottom:ring?3:1,right:ring?3:1,width:size*0.28,height:size*0.28,borderRadius:"50%",background:"#22c55e",border:"2px solid #000",zIndex:2}}/>}
+  </div>
+);
+
+const Modal = ({ children, onClose }) => (
+  <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:1000,backdropFilter:"blur(4px)"}}>
+    <div onClick={e=>e.stopPropagation()} className="slide-up" style={{background:"#111",borderRadius:"20px 20px 0 0",padding:24,width:"100%",maxWidth:430,paddingBottom:40}}>
+      {children}
+    </div>
+  </div>
+);
+
+// ── Main App ──────────────────────────────────────────────────────────────────
+function App() {
+  const [profile, setProfile] = useState(()=>{ try{return JSON.parse(localStorage.getItem("cg_profile"));}catch{return null;} });
+  const [profiles, setProfiles] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [activeUser, setActiveUser] = useState(null);
+  const [input, setInput] = useState("");
+  const [authMode, setAuthMode] = useState("login");
+  const [form, setForm] = useState({username:"",password:"",avatar:"😊",error:"",loading:false});
+  const [onlineIds, setOnlineIds] = useState(new Set());
+  const [typingIds, setTypingIds] = useState(new Set());
+  const [screen, setScreen] = useState("chats"); // chats | search | profile
+  const [searchQuery, setSearchQuery] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
+  const [editMsg, setEditMsg] = useState(null);
+  const [msgMenu, setMsgMenu] = useState(null); // {msg, x, y}
+  const [reactionPicker, setReactionPicker] = useState(null);
+  const [wallpaper, setWallpaper] = useState(()=>localStorage.getItem("cg_wallpaper")||"#000000");
+  const [darkMode, setDarkMode] = useState(()=>localStorage.getItem("cg_dark")!=="false");
+  const [showProfile, setShowProfile] = useState(false);
+  const [editProfile, setEditProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({username:"",bio:"",avatar:"😊",password:"",newPassword:""});
+  const [showWallpaperPicker, setShowWallpaperPicker] = useState(false);
+  const [notification, setNotification] = useState(null);
+  const [blockedIds, setBlockedIds] = useState(()=>{ try{return JSON.parse(localStorage.getItem("cg_blocked"))||[];}catch{return[];} });
+  const [hideOnline, setHideOnline] = useState(()=>localStorage.getItem("cg_hide_online")==="true");
+  const [hideRead, setHideRead] = useState(()=>localStorage.getItem("cg_hide_read")==="true");
+  const typingTimer = useRef(null);
+  const bottomRef = useRef(null);
+  const channelRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const bg = darkMode ? "#000" : "#f0f0f5";
+  const cardBg = darkMode ? "#111" : "#fff";
+  const border = darkMode ? "#1a1a1a" : "#e0e0e0";
+  const textColor = darkMode ? "#fff" : "#111";
+  const subColor = darkMode ? "#555" : "#999";
+
+  const showNotif = (msg) => { setNotification(msg); setTimeout(()=>setNotification(null),2500); };
+
+  // Load data
+  useEffect(()=>{
+    if(!profile) return;
+    sb.from("profiles").select("*").then(({data})=>{ if(data) setProfiles(data); });
+    sb.from("messages").select("*").or(`from_id.eq.${profile.id},to_id.eq.${profile.id}`).order("created_at",{ascending:true}).then(({data})=>{ if(data) setMessages(data); });
+  },[profile]);
+
+  // Realtime
+  useEffect(()=>{
+    if(!profile) return;
+    const ch = sb.channel("cg_main_"+profile.id)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`to_id=eq.${profile.id}`},(p)=>{
+        setMessages(prev=>prev.find(m=>m.id===p.new.id)?prev:[...prev,p.new]);
+        if(!blockedIds.includes(p.new.from_id)){
+          const sender = profiles.find(u=>u.id===p.new.from_id);
+          showNotif(`${sender?.username||"Someone"}: ${p.new.text}`);
+        }
+        setProfiles(prev=>{ if(!prev.find(u=>u.id===p.new.from_id)){ sb.from("profiles").select("*").eq("id",p.new.from_id).single().then(({data})=>{ if(data) setProfiles(pp=>[...pp,data]); }); } return prev; });
+      })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"messages"},(p)=>{
+        setMessages(prev=>prev.map(m=>m.id===p.new.id?p.new:m));
+      })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages"},(p)=>{
+        setMessages(prev=>prev.filter(m=>m.id!==p.old.id));
+      })
+      .on("presence",{event:"sync"},()=>{
+        if(!hideOnline){ const state=ch.presenceState(); setOnlineIds(new Set(Object.values(state).flat().map(p=>p.user_id))); }
+      })
+      .on("broadcast",{event:"typing"},({payload})=>{
+        setTypingIds(s=>new Set([...s,payload.user_id]));
+        setTimeout(()=>setTypingIds(s=>{ const n=new Set(s); n.delete(payload.user_id); return n; }),2000);
+      })
+      .subscribe(async(status)=>{ if(status==="SUBSCRIBED"&&!hideOnline) await ch.track({user_id:profile.id}); });
+    channelRef.current=ch;
+    return ()=>sb.removeChannel(ch);
+  },[profile,blockedIds,hideOnline]);
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,activeUser]);
+
+  // Auth
+  const signup = async()=>{
+    if(!form.username.trim()) return setForm(f=>({...f,error:"Enter a username"}));
+    if(form.password.length<3) return setForm(f=>({...f,error:"Password min 3 chars"}));
+    setForm(f=>({...f,loading:true,error:""}));
+    const {data:ex} = await sb.from("profiles").select("id").eq("username",form.username.trim()).maybeSingle();
+    if(ex) return setForm(f=>({...f,error:"Username taken",loading:false}));
+    const hashed=await hashPw(form.password);
+    const color=COLORS[Math.floor(Math.random()*COLORS.length)];
+    const {data,error}=await sb.from("profiles").insert({id:crypto.randomUUID(),username:form.username.trim(),avatar:form.avatar,color,bio:"Hey there! 👋",password_hash:hashed}).select().single();
+    if(error) return setForm(f=>({...f,error:error.message,loading:false}));
+    localStorage.setItem("cg_profile",JSON.stringify(data));
+    setProfile(data); setForm(f=>({...f,loading:false}));
+  };
+
+  const login = async()=>{
+    if(!form.username.trim()||!form.password) return setForm(f=>({...f,error:"Fill all fields"}));
+    setForm(f=>({...f,loading:true,error:""}));
+    const hashed=await hashPw(form.password);
+    const {data}=await sb.from("profiles").select("*").eq("username",form.username.trim()).eq("password_hash",hashed).maybeSingle();
+    if(!data) return setForm(f=>({...f,error:"Wrong username or password",loading:false}));
+    localStorage.setItem("cg_profile",JSON.stringify(data));
+    setProfile(data); setForm(f=>({...f,loading:false}));
+  };
+
+  const logout = async()=>{
+    if(channelRef.current) await channelRef.current.untrack();
+    localStorage.removeItem("cg_profile");
+    setProfile(null); setActiveUser(null); setMessages([]); setProfiles([]);
+  };
+
+  // Messaging
+  const sendMessage = async()=>{
+    if(!input.trim()||!activeUser||!profile) return;
+    const text=input.trim(); setInput(""); setReplyTo(null); clearTimeout(typingTimer.current);
+
+    if(editMsg){
+      await sb.from("messages").update({text,edited:true}).eq("id",editMsg.id);
+      setMessages(prev=>prev.map(m=>m.id===editMsg.id?{...m,text,edited:true}:m));
+      setEditMsg(null); return;
+    }
+
+    const opt={id:"opt-"+Date.now(),from_id:profile.id,to_id:activeUser.id,text,created_at:new Date().toISOString(),reply_to:replyTo?.id||null,reply_text:replyTo?.text||null};
+    setMessages(prev=>[...prev,opt]);
+    const {data,error}=await sb.from("messages").insert({from_id:profile.id,to_id:activeUser.id,text,reply_to:replyTo?.id||null,reply_text:replyTo?.text||null}).select().single();
+    if(!error&&data) setMessages(prev=>prev.map(m=>m.id===opt.id?data:m));
+  };
+
+  const deleteMessage = async(msg)=>{
+    await sb.from("messages").delete().eq("id",msg.id);
+    setMessages(prev=>prev.filter(m=>m.id!==msg.id));
+    setMsgMenu(null); showNotif("Message deleted");
+  };
+
+  const addReaction = async(msg,emoji)=>{
+    await sb.from("messages").update({reaction:emoji}).eq("id",msg.id);
+    setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,reaction:emoji}:m));
+    setReactionPicker(null); setMsgMenu(null);
+  };
+
+  const handleTyping=(val)=>{
+    setInput(val);
+    if(!profile||!channelRef.current) return;
+    channelRef.current.send({type:"broadcast",event:"typing",payload:{user_id:profile.id}});
+    clearTimeout(typingTimer.current);
+    typingTimer.current=setTimeout(()=>{},1500);
+  };
+
+  const saveProfile = async()=>{
+    const updates={};
+    if(profileForm.username.trim()&&profileForm.username!==profile.username) updates.username=profileForm.username.trim();
+    if(profileForm.bio.trim()) updates.bio=profileForm.bio.trim();
+    if(profileForm.avatar!==profile.avatar) updates.avatar=profileForm.avatar;
+    if(profileForm.newPassword&&profileForm.password){
+      const hashed=await hashPw(profileForm.password);
+      if(hashed!==profile.password_hash){ showNotif("Wrong current password"); return; }
+      updates.password_hash=await hashPw(profileForm.newPassword);
+    }
+    if(Object.keys(updates).length===0){ setEditProfile(false); return; }
+    const {data,error}=await sb.from("profiles").update(updates).eq("id",profile.id).select().single();
+    if(error){ showNotif("Error: "+error.message); return; }
+    const updated={...profile,...data};
+    localStorage.setItem("cg_profile",JSON.stringify(updated));
+    setProfile(updated); setEditProfile(false); showNotif("Profile updated ✓");
+  };
+
+  const toggleBlock=(uid)=>{
+    const newBlocked=blockedIds.includes(uid)?blockedIds.filter(id=>id!==uid):[...blockedIds,uid];
+    setBlockedIds(newBlocked); localStorage.setItem("cg_blocked",JSON.stringify(newBlocked));
+    showNotif(blockedIds.includes(uid)?"User unblocked":"User blocked");
+  };
+
+  // Derived
+  const getConvo=(oid)=>messages.filter(m=>((m.from_id===profile?.id&&m.to_id===oid)||(m.from_id===oid&&m.to_id===profile?.id))&&!blockedIds.includes(m.from_id)).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const getLastMsg=(oid)=>{ const c=getConvo(oid); return c[c.length-1]||null; };
+  const getUnread=(oid)=>messages.filter(m=>m.from_id===oid&&m.to_id===profile?.id&&!blockedIds.includes(oid)).length;
+  const otherUsers=profiles.filter(p=>p.id!==profile?.id);
+  const visibleUsers=otherUsers.filter(u=>!blockedIds.includes(u.id));
+  const searchedUsers=searchQuery?otherUsers.filter(u=>u.username.toLowerCase().includes(searchQuery.toLowerCase())):[];
+  const isOtherTyping=activeUser&&typingIds.has(activeUser.id);
+  const totalUnread=visibleUsers.reduce((s,u)=>s+getUnread(u.id),0);
+
+  const IS={width:"100%",background:darkMode?"#1a1a1a":"#f5f5f5",border:`1px solid ${border}`,borderRadius:10,padding:"12px 14px",color:textColor,fontSize:15,outline:"none",display:"block"};
+  const BS={width:"100%",padding:"13px",background:"linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)",border:"none",borderRadius:12,color:"#fff",fontWeight:700,fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"};
+
+  // ══ AUTH ══════════════════════════════════════════════════════════════════
+  if(!profile) return (
+    <div style={{minHeight:"100vh",background:"#000",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:340,background:"#0a0a0a",border:"1px solid #1a1a1a",borderRadius:16,padding:"32px 24px"}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:34,fontWeight:800,fontStyle:"italic",fontFamily:"Georgia,serif",background:"linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Chatgram</div>
+          <div style={{color:"#444",fontSize:12,marginTop:4}}>No email needed ✓</div>
+        </div>
+        {authMode==="signup"&&(
+          <>
+            <div style={{color:"#888",fontSize:12,marginBottom:8}}>Pick your avatar:</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {AVATARS.map(e=><div key={e} onClick={()=>setForm(f=>({...f,avatar:e}))} style={{fontSize:20,width:36,height:36,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:form.avatar===e?"#1a1a2e":"#111",border:form.avatar===e?"2px solid #833ab4":"2px solid transparent"}}>{e}</div>)}
+            </div>
+          </>
+        )}
+        <input placeholder="Username" value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value,error:""}))} style={IS}/>
+        <input placeholder="Password" type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value,error:""}))} onKeyDown={e=>e.key==="Enter"&&(authMode==="login"?login():signup())} style={{...IS,marginTop:10}}/>
+        {form.error&&<div style={{color:"#e1306c",fontSize:12,marginTop:8}}>{form.error}</div>}
+        <button onClick={authMode==="login"?login:signup} disabled={form.loading} style={{...BS,marginTop:14,opacity:form.loading?0.7:1}}>
+          {form.loading?<Spinner/>:authMode==="login"?"Log In":"Create Account"}
+        </button>
+        <div style={{textAlign:"center",marginTop:14,color:"#555",fontSize:13}}>
+          {authMode==="login"?<>No account? <span style={{color:"#4f9eff",cursor:"pointer"}} onClick={()=>{setAuthMode("signup");setForm(f=>({...f,error:""}));}}>Sign up</span></>:<>Have account? <span style={{color:"#4f9eff",cursor:"pointer"}} onClick={()=>{setAuthMode("login");setForm(f=>({...f,error:""}));}}>Log in</span></>}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ══ CHAT ROOM ═════════════════════════════════════════════════════════════
+  if(activeUser) return (
+    <div style={{display:"flex",flexDirection:"column",height:"100vh",background:wallpaper}} className="fade-in">
+      {/* Header */}
+      <div style={{padding:"48px 12px 12px",borderBottom:`0.5px solid ${border}`,display:"flex",alignItems:"center",gap:10,background:darkMode?"rgba(0,0,0,0.85)":"rgba(255,255,255,0.95)",backdropFilter:"blur(10px)"}}>
+        <button onClick={()=>{setActiveUser(null);setReplyTo(null);setEditMsg(null);}} style={{background:"none",border:"none",color:textColor,fontSize:28,cursor:"pointer",lineHeight:1,padding:"0 4px"}}>‹</button>
+        <div onClick={()=>setShowProfile(true)} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10,flex:1}}>
+          <Avatar user={activeUser} size={38} online={!hideOnline&&onlineIds.has(activeUser.id)}/>
+          <div>
+            <div style={{fontWeight:600,fontSize:15,color:textColor}}>{activeUser.username}</div>
+            <div style={{fontSize:12,color:isOtherTyping?"#833ab4":onlineIds.has(activeUser.id)?"#22c55e":subColor}}>
+              {isOtherTyping?"typing...":((!hideOnline&&onlineIds.has(activeUser.id))?"Active now":"Tap for info")}
+            </div>
+          </div>
+        </div>
+        <span style={{fontSize:20,cursor:"pointer",marginRight:6}} onClick={()=>setShowWallpaperPicker(true)}>🎨</span>
+        <span style={{fontSize:20,cursor:"pointer",marginRight:6}} onClick={()=>toggleBlock(activeUser.id)}>{blockedIds.includes(activeUser.id)?"🔓":"🚫"}</span>
+      </div>
+
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"12px",display:"flex",flexDirection:"column",gap:2}} onClick={()=>{setMsgMenu(null);setReactionPicker(null);}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,marginBottom:16,marginTop:8}}>
+          <Avatar user={activeUser} size={70} ring/>
+          <div style={{fontWeight:700,fontSize:17,color:textColor}}>{activeUser.username}</div>
+          <div style={{color:subColor,fontSize:13}}>{activeUser.bio}</div>
+        </div>
+
+        {blockedIds.includes(activeUser.id)&&<div style={{textAlign:"center",color:"#e1306c",fontSize:13,padding:"10px",background:"#1a0a0a",borderRadius:10,margin:"10px 0"}}>You blocked this user. <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>toggleBlock(activeUser.id)}>Unblock</span></div>}
+
+        {getConvo(activeUser.id).map((msg,i,arr)=>{
+          const isMe=msg.from_id===profile.id;
+          const grouped=arr[i-1]&&arr[i-1].from_id===msg.from_id;
+          const showTime=!grouped||i===0;
+          return (
+            <div key={msg.id} className="msg-anim" style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start",marginTop:grouped?1:12}}>
+              {/* Reply preview */}
+              {msg.reply_text&&(
+                <div style={{maxWidth:"70%",padding:"4px 10px",background:darkMode?"#1a1a1a":"#e5e5ea",borderRadius:8,fontSize:11,color:subColor,marginBottom:2,borderLeft:"2px solid #833ab4",paddingLeft:8}}>
+                  ↩ {msg.reply_text.slice(0,40)}{msg.reply_text.length>40?"...":""}
+                </div>
+              )}
+              <div
+                onDoubleClick={()=>{ if(!blockedIds.includes(activeUser.id)){ addReaction(msg,"❤️"); } }}
+                onLongPress={()=>setMsgMenu({msg,isMe})}
+                onClick={(e)=>{ e.stopPropagation(); if(msgMenu?.msg?.id===msg.id) setMsgMenu(null); else setMsgMenu({msg,isMe}); }}
+                style={{maxWidth:"74%",padding:"10px 14px",wordBreak:"break-word",fontSize:15,lineHeight:1.4,color:"#fff",position:"relative",
+                  borderRadius:isMe?(grouped?"18px 18px 5px 18px":"20px 20px 5px 20px"):(grouped?"18px 18px 18px 5px":"20px 20px 18px 5px"),
+                  background:isMe?"linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)":darkMode?"#1c1c1e":"#e5e5ea",
+                  color:isMe?"#fff":textColor,
+                  opacity:msg.id?.toString().startsWith("opt-")?0.7:1,cursor:"pointer"}}
+              >
+                {msg.text}
+                {msg.edited&&<span style={{fontSize:10,opacity:0.6,marginLeft:6}}>edited</span>}
+                {msg.reaction&&(
+                  <div style={{position:"absolute",bottom:-10,right:isMe?undefined:8,left:isMe?8:undefined,background:darkMode?"#222":"#f0f0f0",borderRadius:10,padding:"1px 5px",fontSize:14,border:`1px solid ${border}`}}>{msg.reaction}</div>
+                )}
+              </div>
+
+              {/* Message menu */}
+              {msgMenu?.msg?.id===msg.id&&(
+                <div className="slide-up" onClick={e=>e.stopPropagation()} style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap",justifyContent:isMe?"flex-end":"flex-start"}}>
+                  {/* Quick reactions */}
+                  <div style={{display:"flex",gap:4,background:darkMode?"#1a1a1a":"#f0f0f0",borderRadius:20,padding:"4px 8px"}}>
+                    {REACTIONS.map(e=><span key={e} style={{fontSize:18,cursor:"pointer"}} onClick={()=>addReaction(msg,e)}>{e}</span>)}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>{setReplyTo(msg);setMsgMenu(null);inputRef.current?.focus();}} style={{background:"#1a1a1a",border:"none",color:"#aaa",padding:"5px 10px",borderRadius:8,fontSize:12,cursor:"pointer"}}>↩ Reply</button>
+                    {isMe&&<button onClick={()=>{setEditMsg(msg);setInput(msg.text);setMsgMenu(null);inputRef.current?.focus();}} style={{background:"#1a1a1a",border:"none",color:"#aaa",padding:"5px 10px",borderRadius:8,fontSize:12,cursor:"pointer"}}>✏️ Edit</button>}
+                    {isMe&&<button onClick={()=>deleteMessage(msg)} style={{background:"#2a0a0a",border:"none",color:"#e1306c",padding:"5px 10px",borderRadius:8,fontSize:12,cursor:"pointer"}}>🗑 Delete</button>}
+                  </div>
+                </div>
+              )}
+
+              {isMe&&i===arr.length-1&&(
+                <div style={{fontSize:10,color:subColor,marginTop:2}}>{new Date(msg.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} {!hideRead?"✓✓":""}</div>
+              )}
+            </div>
+          );
+        })}
+
+        {isOtherTyping&&(
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
+            <div style={{background:darkMode?"#1c1c1e":"#e5e5ea",borderRadius:"18px 18px 18px 5px",padding:"10px 14px",display:"flex",gap:4,alignItems:"center"}}>
+              {[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#555",animation:`bounce 1.2s ease infinite ${i*0.2}s`}}/>)}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Reply/Edit bar */}
+      {(replyTo||editMsg)&&(
+        <div style={{padding:"8px 12px",background:darkMode?"#111":"#f5f5f5",borderTop:`0.5px solid ${border}`,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{flex:1,fontSize:13,color:subColor,borderLeft:"3px solid #833ab4",paddingLeft:8}}>
+            {editMsg?"Editing: ":"Replying: "}{(editMsg||replyTo)?.text?.slice(0,50)}
+          </div>
+          <span style={{cursor:"pointer",fontSize:18,color:subColor}} onClick={()=>{setReplyTo(null);setEditMsg(null);setInput("");}}>✕</span>
+        </div>
+      )}
+
+      {/* Input */}
+      {!blockedIds.includes(activeUser.id)&&(
+        <div style={{padding:"10px 12px 30px",borderTop:`0.5px solid ${border}`,display:"flex",alignItems:"center",gap:10,background:darkMode?"rgba(0,0,0,0.9)":"rgba(255,255,255,0.95)",backdropFilter:"blur(10px)"}}>
+          <span style={{fontSize:24,cursor:"pointer"}}>😊</span>
+          <div style={{flex:1,background:darkMode?"#1c1c1e":"#f0f0f0",borderRadius:24,padding:"10px 16px",display:"flex",alignItems:"center",border:`1px solid ${border}`}}>
+            <input ref={inputRef} value={input} onChange={e=>handleTyping(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} placeholder={editMsg?"Edit message...":"Message..."} style={{flex:1,background:"none",border:"none",outline:"none",color:textColor,fontSize:15}}/>
+            {input&&<button onClick={sendMessage} style={{background:"none",border:"none",cursor:"pointer",color:"#4f9eff",fontWeight:700,fontSize:15,padding:0}}>{editMsg?"Save":"Send"}</button>}
+          </div>
+          {!input&&<span style={{fontSize:24,cursor:"pointer"}}>📷</span>}
+          {!input&&<span style={{fontSize:24,cursor:"pointer"}}>🎤</span>}
+        </div>
+      )}
+
+      {/* Profile modal */}
+      {showProfile&&(
+        <Modal onClose={()=>setShowProfile(false)}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+            <Avatar user={activeUser} size={80} ring online={!hideOnline&&onlineIds.has(activeUser.id)}/>
+            <div style={{fontWeight:700,fontSize:20,color:textColor}}>{activeUser.username}</div>
+            <div style={{color:subColor,fontSize:14}}>{activeUser.bio}</div>
+            <div style={{color:subColor,fontSize:12}}>{!hideOnline&&onlineIds.has(activeUser.id)?"🟢 Active now":"⚫ Offline"}</div>
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <button onClick={()=>{setShowProfile(false);}} style={{background:"#1a1a1a",border:"none",color:"#fff",padding:"8px 20px",borderRadius:10,fontSize:13,cursor:"pointer"}}>Message</button>
+              <button onClick={()=>{toggleBlock(activeUser.id);setShowProfile(false);}} style={{background:blockedIds.includes(activeUser.id)?"#1a3a1a":"#2a0a0a",border:"none",color:blockedIds.includes(activeUser.id)?"#4ade80":"#e1306c",padding:"8px 20px",borderRadius:10,fontSize:13,cursor:"pointer"}}>
+                {blockedIds.includes(activeUser.id)?"Unblock":"Block"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Wallpaper picker */}
+      {showWallpaperPicker&&(
+        <Modal onClose={()=>setShowWallpaperPicker(false)}>
+          <div style={{color:textColor,fontWeight:600,fontSize:16,marginBottom:16}}>Chat Wallpaper</div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            {WALLPAPERS.map(w=>(
+              <div key={w} onClick={()=>{setWallpaper(w);localStorage.setItem("cg_wallpaper",w);setShowWallpaperPicker(false);}} style={{width:60,height:60,borderRadius:12,background:w,cursor:"pointer",border:wallpaper===w?"3px solid #833ab4":"3px solid transparent"}}/>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+
+  // ══ MAIN TABS ════════════════════════════════════════════════════════════
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100vh",background:bg}} className="fade-in">
+
+      {/* ── CHATS TAB ── */}
+      {screen==="chats"&&(
+        <>
+          <div style={{padding:"48px 16px 12px",borderBottom:`0.5px solid ${border}`,background:darkMode?"rgba(0,0,0,0.9)":"rgba(255,255,255,0.95)",backdropFilter:"blur(10px)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <span style={{fontWeight:700,fontSize:22,letterSpacing:-0.5,color:textColor}}>Messages {totalUnread>0&&<span style={{background:"#e1306c",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:12}}>{totalUnread}</span>}</span>
+              <div style={{display:"flex",gap:12}}>
+                <span style={{fontSize:22,cursor:"pointer"}} onClick={()=>setDarkMode(d=>{const n=!d;localStorage.setItem("cg_dark",n);return n;})}>{darkMode?"☀️":"🌙"}</span>
+                <span style={{fontSize:22,cursor:"pointer"}} onClick={()=>setScreen("search")}>✏️</span>
+              </div>
+            </div>
+            <div style={{background:darkMode?"#1a1a1a":"#f0f0f0",borderRadius:12,padding:"9px 14px",display:"flex",alignItems:"center",gap:8}} onClick={()=>setScreen("search")}>
+              <span style={{color:subColor}}>🔍</span><span style={{color:subColor,fontSize:15}}>Search people…</span>
+            </div>
+          </div>
+
+          {visibleUsers.length>0&&(
+            <div style={{padding:"14px 16px 4px",borderBottom:`0.5px solid ${border}`}}>
+              <div style={{fontSize:11,color:subColor,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Active</div>
+              <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:4}}>
+                {visibleUsers.map(u=>(
+                  <div key={u.id} onClick={()=>setActiveUser(u)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",flexShrink:0}}>
+                    <Avatar user={u} size={52} ring online={!hideOnline&&onlineIds.has(u.id)}/>
+                    <span style={{fontSize:10,color:subColor,maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.username}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{flex:1,overflowY:"auto"}}>
+            {visibleUsers.length===0&&<div style={{textAlign:"center",color:subColor,fontSize:14,marginTop:60,lineHeight:2}}>No users yet 👥<br/>Share this app!</div>}
+            {visibleUsers.sort((a,b)=>{const la=getLastMsg(a.id);const lb=getLastMsg(b.id);if(!la&&!lb)return 0;if(!la)return 1;if(!lb)return -1;return new Date(lb.created_at)-new Date(la.created_at);}).map(u=>{
+              const last=getLastMsg(u.id); const unread=getUnread(u.id);
+              return (
+                <div key={u.id} onClick={()=>setActiveUser(u)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",borderBottom:`0.5px solid ${border}`}}
+                  onMouseEnter={e=>e.currentTarget.style.background=darkMode?"#0d0d0d":"#f5f5f5"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <Avatar user={u} size={54} online={!hideOnline&&onlineIds.has(u.id)}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span style={{fontWeight:unread>0?700:400,fontSize:15,color:textColor}}>{u.username}</span>
+                      {last&&<span style={{fontSize:11,color:subColor}}>{new Date(last.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span>}
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:2}}>
+                      <span style={{fontSize:13,color:unread>0?textColor:subColor,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:230,fontWeight:unread>0?500:400}}>
+                        {last?(last.from_id===profile.id?`You: ${last.text}`:last.text):`Say hi to ${u.username}!`}
+                      </span>
+                      {unread>0&&<div style={{background:"#e1306c",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,color:"#fff"}}>{unread}</div>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* ── SEARCH TAB ── */}
+      {screen==="search"&&(
+        <>
+          <div style={{padding:"48px 16px 12px",borderBottom:`0.5px solid ${border}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <button onClick={()=>setScreen("chats")} style={{background:"none",border:"none",color:textColor,fontSize:24,cursor:"pointer"}}>‹</button>
+              <span style={{fontWeight:700,fontSize:20,color:textColor}}>Find People</span>
+            </div>
+            <input placeholder="Search by username…" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} autoFocus style={IS}/>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+            {searchQuery&&searchedUsers.length===0&&<div style={{textAlign:"center",color:subColor,marginTop:40,fontSize:14}}>No users found</div>}
+            {(searchQuery?searchedUsers:otherUsers).map(u=>(
+              <div key={u.id} onClick={()=>{setActiveUser(u);setScreen("chats");setSearchQuery("");}} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",borderBottom:`0.5px solid ${border}`}}>
+                <Avatar user={u} size={46} online={!hideOnline&&onlineIds.has(u.id)}/>
+                <div>
+                  <div style={{fontWeight:600,fontSize:15,color:textColor}}>{u.username}</div>
+                  <div style={{fontSize:12,color:subColor}}>{u.bio}</div>
+                </div>
+                {blockedIds.includes(u.id)&&<span style={{marginLeft:"auto",fontSize:11,color:"#e1306c"}}>Blocked</span>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── PROFILE TAB ── */}
+      {screen==="profile"&&(
+        <>
+          <div style={{padding:"48px 16px 12px",borderBottom:`0.5px solid ${border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontWeight:700,fontSize:20,color:textColor}}>Profile</span>
+              <button onClick={()=>setEditProfile(true)} style={{background:"#1a1a1a",border:"none",color:"#aaa",padding:"6px 14px",borderRadius:10,fontSize:12,cursor:"pointer"}}>Edit</button>
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:20}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,marginBottom:24}}>
+              <Avatar user={profile} size={90} ring/>
+              <div style={{fontWeight:700,fontSize:20,color:textColor}}>{profile.username}</div>
+              <div style={{color:subColor,fontSize:14}}>{profile.bio}</div>
+            </div>
+
+            {/* Settings */}
+            <div style={{background:cardBg,borderRadius:14,overflow:"hidden",border:`1px solid ${border}`}}>
+              {[
+                {label:"Dark Mode", value:darkMode?"On":"Off", onClick:()=>setDarkMode(d=>{const n=!d;localStorage.setItem("cg_dark",n);return n;})},
+                {label:"Hide Online Status", value:hideOnline?"On":"Off", onClick:()=>{const n=!hideOnline;setHideOnline(n);localStorage.setItem("cg_hide_online",n);}},
+                {label:"Hide Read Receipts", value:hideRead?"On":"Off", onClick:()=>{const n=!hideRead;setHideRead(n);localStorage.setItem("cg_hide_read",n);}},
+              ].map((item,i)=>(
+                <div key={i} onClick={item.onClick} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:i<2?`0.5px solid ${border}`:"none",cursor:"pointer"}}>
+                  <span style={{fontSize:15,color:textColor}}>{item.label}</span>
+                  <span style={{fontSize:14,color:"#4f9eff"}}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={logout} style={{...BS,marginTop:20,background:"#2a0a0a",color:"#e1306c"}}>Log Out</button>
+          </div>
+
+          {/* Edit profile modal */}
+          {editProfile&&(
+            <Modal onClose={()=>setEditProfile(false)}>
+              <div style={{color:textColor,fontWeight:600,fontSize:16,marginBottom:16}}>Edit Profile</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+                {AVATARS.map(e=><div key={e} onClick={()=>setProfileForm(f=>({...f,avatar:e}))} style={{fontSize:20,width:34,height:34,borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:profileForm.avatar===e?"#1a1a2e":"#111",border:profileForm.avatar===e?"2px solid #833ab4":"2px solid transparent"}}>{e}</div>)}
+              </div>
+              <input placeholder={`Username (${profile.username})`} value={profileForm.username} onChange={e=>setProfileForm(f=>({...f,username:e.target.value}))} style={{...IS,marginBottom:10}}/>
+              <input placeholder={`Bio (${profile.bio})`} value={profileForm.bio} onChange={e=>setProfileForm(f=>({...f,bio:e.target.value}))} style={{...IS,marginBottom:10}}/>
+              <input placeholder="Current password (to change pw)" type="password" value={profileForm.password} onChange={e=>setProfileForm(f=>({...f,password:e.target.value}))} style={{...IS,marginBottom:10}}/>
+              <input placeholder="New password" type="password" value={profileForm.newPassword} onChange={e=>setProfileForm(f=>({...f,newPassword:e.target.value}))} style={{...IS,marginBottom:14}}/>
+              <button onClick={saveProfile} style={BS}>Save Changes</button>
+            </Modal>
+          )}
+        </>
+      )}
+
+      {/* Bottom nav */}
+      <div style={{display:"flex",justifyContent:"space-around",padding:"10px 0 26px",borderTop:`0.5px solid ${border}`,background:darkMode?"rgba(0,0,0,0.9)":"rgba(255,255,255,0.95)",backdropFilter:"blur(10px)"}}>
+        {[
+          {icon:"💬",tab:"chats",label:"Chats"},
+          {icon:"🔍",tab:"search",label:"Search"},
+          {icon:"👤",tab:"profile",label:"Profile"},
+        ].map(item=>(
+          <div key={item.tab} onClick={()=>setScreen(item.tab)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",padding:"4px 20px"}}>
+            <span style={{fontSize:22,opacity:screen===item.tab?1:0.4}}>{item.icon}</span>
+            <span style={{fontSize:9,color:screen===item.tab?"#833ab4":subColor,fontWeight:screen===item.tab?700:400}}>{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Notification toast */}
+      {notification&&(
+        <div className="slide-up" style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",background:"#1a1a1a",color:"#fff",padding:"10px 18px",borderRadius:20,fontSize:13,zIndex:999,maxWidth:300,textAlign:"center",border:"1px solid #333",boxShadow:"0 4px 20px rgba(0,0,0,0.5)"}}>
+          {notification}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
